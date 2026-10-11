@@ -24,23 +24,30 @@ def search(query, date_posted="3days"):
     key = os.environ.get("RAPIDAPI_KEY", "").strip()
     if not key:
         raise RuntimeError("RAPIDAPI_KEY isn't set.")
-    r = requests.get(
-        f"https://{HOST}/search",
-        headers={"X-RapidAPI-Key": key, "X-RapidAPI-Host": HOST},
-        params={
-            "query": query,
-            "page": 1,
-            "num_pages": 1,
-            "country": "us",
-            "date_posted": date_posted,
-            "work_from_home": "true",
-        },
-        timeout=90,
-    )
+    headers = {"X-RapidAPI-Key": key, "X-RapidAPI-Host": HOST}
+    params = {
+        "query": query,
+        "num_pages": 1,
+        "country": "us",
+        "date_posted": date_posted,
+        "work_from_home": "true",
+    }
+    # JSearch v5 moved search to /search-v2. Fall back to the old path just in case.
+    r = None
+    for path in ("/search-v2", "/search"):
+        r = requests.get(f"https://{HOST}{path}", headers=headers, params=params, timeout=90)
+        if r.status_code != 404:
+            break
     if r.status_code == 429:
         raise RuntimeError("RapidAPI says you've hit your monthly request limit.")
+    if r.status_code in (401, 403):
+        raise RuntimeError("RapidAPI rejected the key. Check RAPIDAPI_KEY and that you're subscribed to JSearch.")
     r.raise_for_status()
-    return r.json().get("data") or []
+    data = r.json().get("data")
+    # v5 returns {"data": {"jobs": [...], "cursor": ...}}; older versions return {"data": [...]}
+    if isinstance(data, dict):
+        data = data.get("jobs") or []
+    return data or []
 
 
 def _is_aggregator(url):
