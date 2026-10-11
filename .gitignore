@@ -1,0 +1,5 @@
+.env
+__pycache__/
+*.pyc
+lowtide_local.db
+.venv/

@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}Jobs · Lowtide{% endblock %}
+{% block body %}
+{% set slack_on = c.low_workload_priority %}
+<section class="jobs-head">
+  <div>
+    <h1>Jobs</h1>
+    <p class="lede">
+      {% if run %}Last search {{ run.started_at|ago }}{% if run.state == 'failed' %}, and it hit a problem (details below){% endif %}.
+      {% else %}No searches yet.{% endif %}
+      New listings arrive every morning.
+    </p>
+  </div>
+  <div class="run-box">
+    <button class="btn primary" id="run-btn" {% if not c %}disabled{% endif %}>Search now</button>
+    <details class="log" id="log" {% if run and run.state in ['running', 'failed'] %}open{% endif %}>
+      <summary>Search log</summary>
+      <pre id="log-text">{{ run.log if run else 'Nothing yet.' }}</pre>
+    </details>
+  </div>
+</section>
+
+<nav class="tabs" aria-label="Job lists">
+  {% for key, label in tabs %}
+    <a href="{{ url_for('jobs', tab=key) }}" {% if key == tab %}aria-current="page"{% endif %}>
+      {{ label }} <span class="count">{{ counts.get(key, 0) }}</span></a>
+  {% endfor %}
+</nav>
+
+{% if not rows %}
+  <div class="empty">
+    {% if tab == 'new' %}
+      {% if not c %}<p>Set up your <a href="{{ url_for('profile') }}">profile</a> so Lowtide knows what to look for.</p>
+      {% else %}<p>No new jobs right now. Press “Search now”, or check back tomorrow morning.</p>{% endif %}
+    {% elif tab == 'filtered' %}<p>Nothing filtered out yet.</p>
+    {% else %}<p>Nothing here yet. Change a job's status to move it here.</p>{% endif %}
+  </div>
+{% else %}
+<div class="table-wrap">
+<table class="jobs">
+  <thead>
+    <tr>
+      <th scope="col">Job</th>
+      <th scope="col">Pay</th>
+      <th scope="col">Setup</th>
+      <th scope="col">Fit</th>
+      {% if slack_on %}<th scope="col">Calm</th>{% endif %}
+      <th scope="col">Details</th>
+      <th scope="col">Apply</th>
+      {% if tab != 'filtered' %}<th scope="col">Status</th>{% endif %}
+    </tr>
+  </thead>
+  <tbody>
+  {% for j in rows %}
+    {% set dive = j.deep_dive|fromjson %}
+    <tr>
+      <td data-label="Job" class="job">
+        <strong>{{ j.title }}</strong>
+        <span>{{ j.company }}{% if j.company_size %} <span class="muted">({{ j.company_size }})</span>{% endif %}</span>
+        <span class="muted">Posted {{ j.posted_at|ago if j.posted_at else 'recently' }}</span>
+      </td>
+      <td data-label="Pay">
+        {% if j.pay_text %}{{ j.pay_text }}
+          <span class="tag {{ 'est' if j.pay_source == 'estimated' else 'posted' }}">{{ 'Estimate' if j.pay_source == 'estimated' else 'Posted' }}</span>
+        {% else %}<span class="muted">Not posted</span>{% endif %}
+      </td>
+      <td data-label="Setup">
+        {{ j.remote_note or ('Remote' if j.is_remote else 'Check listing') }}
+        <span class="muted">{{ j.employment_type }}</span>
+      </td>
+      {% if tab == 'filtered' %}
+        <td data-label="Why" colspan="{{ 3 if slack_on else 2 }}">{{ j.reject_reason }}</td>
+      {% else %}
+      <td data-label="Fit">
+        <span class="score">{{ j.fit_score if j.fit_score is not none else '–' }}</span>
+        <span class="small">{{ j.fit_reason }}</span>
+        {% if j.qualified %}<span class="muted">Your odds: {{ j.qualified }}</span>{% endif %}
+      </td>
+      {% if slack_on %}
+      <td data-label="Calm">
+        {% if j.slack_score is not none %}
+          <div class="gauge" role="img" aria-label="Calm score {{ j.slack_score }} out of 100">
+            <div class="water" style="--level: {{ j.slack_score }}%"></div>
+          </div>
+          <span class="score sm">{{ j.slack_score }}</span>
+          <span class="muted">{{ 'Researched, ' ~ j.slack_confidence ~ ' confidence' if dive else 'From the listing only' }}</span>
+          <span class="small">{{ j.slack_notes }}</span>
+        {% else %}<span class="muted">–</span>{% endif %}
+      </td>
+      {% endif %}
+      <td data-label="Details" class="details">
+        {% set verb = j.resp_verbatim|fromjson or [] %}
+        {% set inf = j.resp_inferred|fromjson or [] %}
+        {% if verb or inf %}
+        <details>
+          <summary>What you'd do</summary>
+          {% if verb %}<p class="sub">From the listing</p><ul>{% for r in verb %}<li>{{ r }}</li>{% endfor %}</ul>{% endif %}
+          {% if inf %}<p class="sub">Likely, but not stated</p><ul class="guess">{% for r in inf %}<li>{{ r }}</li>{% endfor %}</ul>{% endif %}
+        </details>
+        {% endif %}
+        {% if dive %}
+        <details class="dive">
+          <summary>Research</summary>
+          <p>{{ dive.verdict }}</p>
+          {% if dive.green_flags %}<p class="sub">Good signs</p><ul class="good">{% for x in dive.green_flags %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
+          {% if dive.red_flags %}<p class="sub">Warning signs</p><ul class="bad">{% for x in dive.red_flags %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
+          {% if dive.recent_turmoil %}<p class="small"><strong>Recent news:</strong> {{ dive.recent_turmoil }}</p>{% endif %}
+          {% if dive.sources %}<p class="sub">Sources</p><ul class="sources">{% for s in dive.sources %}<li><a href="{{ s }}" target="_blank" rel="noopener">{{ s|truncate(60, True) }}</a></li>{% endfor %}</ul>{% endif %}
+        </details>
+        {% endif %}
+      </td>
+      {% endif %}
+      <td data-label="Apply" class="links">
+        {% if j.direct_url %}<a class="btn primary sm" href="{{ j.direct_url }}" target="_blank" rel="noopener">Company site</a>{% endif %}
+        {% if j.listing_url and j.listing_url != j.direct_url %}<a class="btn quiet sm" href="{{ j.listing_url }}" target="_blank" rel="noopener">Listing</a>{% endif %}
+      </td>
+      {% if tab != 'filtered' %}
+      <td data-label="Status">
+        <select class="status" data-id="{{ j.id }}" aria-label="Status for {{ j.title }}">
+          {% for v, l in [('new','New'),('saved','Saved'),('applied','Applied'),('not_interested','Not for me')] %}
+            <option value="{{ v }}" {% if j.status == v %}selected{% endif %}>{{ l }}</option>
+          {% endfor %}
+        </select>
+      </td>
+      {% endif %}
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+{% endblock %}

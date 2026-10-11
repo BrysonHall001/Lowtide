@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Profile · Lowtide{% endblock %}
+{% block body %}
+<section class="panel">
+  <h1>About you</h1>
+  <p class="lede">Describe the job you want however you like, ramble included. Lowtide turns it into search settings you can check and adjust.</p>
+
+  <form method="post" action="{{ url_for('save_about') }}" enctype="multipart/form-data" data-busy="Building your search settings. This takes about 30 seconds…">
+    <div class="field">
+      <div class="label-row">
+        <label for="description">What are you looking for?</label>
+        <button type="button" class="btn quiet mic" data-target="description" hidden>Talk instead</button>
+      </div>
+      <textarea id="description" name="description" rows="9" placeholder="Pay floor, remote, what kind of work, what you never want to deal with again…">{{ p.description or '' }}</textarea>
+      <p class="hint mic-hint" hidden>Listening. Tap “Stop” when you're done.</p>
+    </div>
+
+    <div class="grid2">
+      <div class="field">
+        <label for="resume">Resume</label>
+        {% if p.resume_filename %}
+          <p class="file-on">Using <strong>{{ p.resume_filename }}</strong>
+            <label class="inline"><input type="checkbox" name="remove_resume" value="1"> Remove</label></p>
+        {% endif %}
+        <input id="resume" type="file" name="resume" accept=".pdf,.docx,.txt">
+        <p class="hint">PDF, Word or text. Uploading replaces the old one.</p>
+      </div>
+      <div class="field">
+        <label for="cover_letter">Cover letter <span class="opt">optional</span></label>
+        {% if p.cover_letter_filename %}
+          <p class="file-on">Using <strong>{{ p.cover_letter_filename }}</strong>
+            <label class="inline"><input type="checkbox" name="remove_cover_letter" value="1"> Remove</label></p>
+        {% endif %}
+        <input id="cover_letter" type="file" name="cover_letter" accept=".pdf,.docx,.txt">
+      </div>
+    </div>
+
+    <div class="field">
+      <div class="label-row">
+        <label for="notes">What your resume doesn't say <span class="opt">optional</span></label>
+        <button type="button" class="btn quiet mic" data-target="notes" hidden>Talk instead</button>
+      </div>
+      <textarea id="notes" name="notes" rows="5" placeholder="e.g. My title says project specialist, but I also run ad campaigns, build CRM automations and design proposals.">{{ p.notes or '' }}</textarea>
+    </div>
+
+    <div class="field">
+      <label for="linkedin_text">LinkedIn profile <span class="opt">optional</span></label>
+      <textarea id="linkedin_text" name="linkedin_text" rows="4" placeholder="Paste your LinkedIn experience section here. LinkedIn blocks apps from reading profile links, so pasting works better.">{{ p.linkedin_text or '' }}</textarea>
+    </div>
+
+    <button class="btn primary" type="submit">Save and build my search</button>
+  </form>
+</section>
+
+{% if c %}
+<section class="panel" id="settings">
+  <h2>Search settings</h2>
+  <p class="lede">{{ c.summary }}</p>
+  <form method="post" action="{{ url_for('save_settings') }}">
+    <input type="hidden" name="summary" value="{{ c.summary }}">
+    <h3>Dealbreakers</h3>
+    <div class="grid3">
+      <div class="field">
+        <label for="min_salary">Minimum yearly pay</label>
+        <input id="min_salary" name="min_salary" inputmode="numeric" value="{{ c.min_salary }}">
+      </div>
+      <fieldset class="field">
+        <legend>Job type</legend>
+        {% for t in ["Full-time", "Contract", "Part-time"] %}
+          <label class="inline"><input type="checkbox" name="employment_types" value="{{ t }}" {% if t in c.employment_types %}checked{% endif %}> {{ t }}</label>
+        {% endfor %}
+      </fieldset>
+      <fieldset class="field">
+        <legend>Must be</legend>
+        <label class="inline"><input type="checkbox" name="remote_only" value="1" {% if c.remote_only %}checked{% endif %}> Fully remote</label>
+        <label class="inline"><input type="checkbox" name="low_workload_priority" value="1" {% if c.low_workload_priority %}checked{% endif %}> Low pressure / light workload</label>
+      </fieldset>
+    </div>
+
+    <h3>What to search</h3>
+    <div class="grid2">
+      <div class="field">
+        <label for="search_queries">Searches run each day <span class="opt">one per line</span></label>
+        <textarea id="search_queries" name="search_queries" rows="6">{{ c.search_queries|lines }}</textarea>
+        <p class="hint">Only the first 5 run each day, to stay inside the free job-data plan.</p>
+      </div>
+      <div class="field">
+        <label for="target_titles">Titles you'd fit <span class="opt">one per line</span></label>
+        <textarea id="target_titles" name="target_titles" rows="6">{{ c.target_titles|lines }}</textarea>
+      </div>
+    </div>
+
+    <h3>How to judge them</h3>
+    <div class="grid2">
+      <div class="field">
+        <label for="must_haves">Must-haves</label>
+        <textarea id="must_haves" name="must_haves" rows="4">{{ c.must_haves|lines }}</textarea>
+      </div>
+      <div class="field">
+        <label for="avoid">Avoid</label>
+        <textarea id="avoid" name="avoid" rows="4">{{ c.avoid|lines }}</textarea>
+      </div>
+      <div class="field">
+        <label for="nice_to_haves">Nice to have</label>
+        <textarea id="nice_to_haves" name="nice_to_haves" rows="4">{{ c.nice_to_haves|lines }}</textarea>
+      </div>
+      <div class="field">
+        <label for="strengths">Your strengths</label>
+        <textarea id="strengths" name="strengths" rows="4">{{ c.strengths|lines }}</textarea>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn primary" type="submit">Save settings</button>
+      <a class="btn quiet" href="{{ url_for('jobs') }}">Go to jobs</a>
+    </div>
+  </form>
+</section>
+{% endif %}
+{% endblock %}

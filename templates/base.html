@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Lowtide{% endblock %}</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌊</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+{% if session.ok %}
+<header class="top">
+  <a class="mark" href="{{ url_for('home') }}">Lowtide</a>
+  <nav>
+    <a href="{{ url_for('jobs') }}" {% if active == 'jobs' %}aria-current="page"{% endif %}>Jobs</a>
+    <a href="{{ url_for('profile') }}" {% if active == 'profile' %}aria-current="page"{% endif %}>Profile</a>
+    <a href="{{ url_for('logout') }}">Log out</a>
+  </nav>
+</header>
+{% endif %}
+<main>
+  {% with msgs = get_flashed_messages() %}
+    {% for m in msgs %}<p class="flash" role="status">{{ m }}</p>{% endfor %}
+  {% endwith %}
+  {% block body %}{% endblock %}
+</main>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
