@@ -20,18 +20,19 @@ _AGGREGATORS = (
 )
 
 
-def search(query, date_posted="3days"):
+def search(query, date_posted="3days", remote=True, location=""):
     key = os.environ.get("RAPIDAPI_KEY", "").strip()
     if not key:
         raise RuntimeError("RAPIDAPI_KEY isn't set.")
     headers = {"X-RapidAPI-Key": key, "X-RapidAPI-Host": HOST}
     params = {
-        "query": query,
+        "query": f"{query} in {location}" if (location and not remote) else query,
         "num_pages": 1,
         "country": "us",
         "date_posted": date_posted,
-        "work_from_home": "true",
     }
+    if remote:
+        params["work_from_home"] = "true"
     # JSearch v5 moved search to /search-v2. Fall back to the old path just in case.
     r = None
     for path in ("/search-v2", "/search"):

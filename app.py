@@ -147,8 +147,10 @@ def home():
 @app.route("/profile")
 @login_required
 def profile():
+    c = db.get_criteria(g.uid)
     return render_template("profile.html", p=db.get_profile(g.uid),
-                           c=db.get_criteria(g.uid), active="profile")
+                           c=ai.clean_criteria(c) if c else None,
+                           max_queries=pipeline.MAX_QUERIES, active="profile")
 
 
 @app.post("/profile/about")
@@ -188,16 +190,16 @@ def save_about():
 @login_required
 def save_settings():
     f = request.form
+    reqs = [{"text": t, "kind": k} for t, k in zip(f.getlist("req_text"), f.getlist("req_kind")) if t.strip()]
     criteria = ai.clean_criteria({
         "summary": f.get("summary", ""),
         "min_salary": f.get("min_salary", "0") or "0",
         "remote_only": bool(f.get("remote_only")),
+        "location": f.get("location", ""),
         "employment_types": f.getlist("employment_types"),
         "target_titles": _split(f.get("target_titles")),
         "search_queries": _split(f.get("search_queries")),
-        "must_haves": _split(f.get("must_haves")),
-        "nice_to_haves": _split(f.get("nice_to_haves")),
-        "avoid": _split(f.get("avoid")),
+        "requirements": reqs,
         "low_workload_priority": bool(f.get("low_workload_priority")),
         "strengths": _split(f.get("strengths")),
     })
@@ -212,8 +214,9 @@ def jobs():
     tab = request.args.get("tab", "new")
     if tab not in dict(TABS):
         tab = "new"
+    c = db.get_criteria(g.uid)
     return render_template("jobs.html", rows=db.list_jobs(g.uid, tab), tab=tab, tabs=TABS,
-                           counts=db.tab_counts(g.uid), c=db.get_criteria(g.uid) or {},
+                           counts=db.tab_counts(g.uid), c=ai.clean_criteria(c) if c else {},
                            run=db.latest_run(g.uid), tailored_ids=db.jobs_with_tailored(g.uid),
                            now=dt.datetime.utcnow(), active="jobs")
 
@@ -230,6 +233,29 @@ def set_status(job_id):
 
 # ------------------------------------------------------------ tailoring
 
+def _write_in_background(uid, doc_id, job_id, level, want_cover):
+    try:
+        p = db.get_profile(uid)
+        job = db.get_job(uid, job_id)
+        out = ai.tailor(p, db.get_criteria(uid) or {}, job, level, want_cover)
+        notes = {k: out.get(k) or [] for k in ("changes", "be_ready_to_explain", "gaps")}
+        db.finish_tailored(doc_id, out.get("resume") or {},
+                           out.get("cover_letter") if want_cover else "", notes)
+        if job and job["status"] == "new":
+            db.update_job(uid, job_id, status="saved")
+    except Exception as e:
+        db.fail_tailored(doc_id, e)
+
+
+def _doc_html(d):
+    """The HTML shown in the editors: their saved edits, or freshly built."""
+    resume = json.loads(d["resume_json"] or "{}")
+    r_html = d.get("resume_html") or worddocs.resume_html(resume)
+    c_html = d.get("cover_html") or (worddocs.cover_html(resume.get("name", ""), d["cover_letter"])
+                                     if d.get("cover_letter") else "")
+    return r_html, c_html
+
+
 @app.route("/jobs/<int:job_id>/tailor", methods=["GET", "POST"])
 @login_required
 def tailor(job_id):
@@ -241,26 +267,61 @@ def tailor(job_id):
         if not p.get("resume_text"):
             flash("Upload a resume on your Profile page first.")
             return redirect(url_for("tailor", job_id=job_id))
-        level = int(request.form.get("level", 2))
-        want_cover = bool(request.form.get("cover"))
         try:
-            out = ai.tailor(p, db.get_criteria(g.uid) or {}, job, level, want_cover)
-            notes = {k: out.get(k) or [] for k in ("changes", "be_ready_to_explain", "gaps")}
-            doc_id = db.save_tailored(g.uid, job_id, level, out.get("resume") or {},
-                                      out.get("cover_letter") if want_cover else "", notes)
-            if job["status"] == "new":
-                db.update_job(g.uid, job_id, status="saved")
-            return redirect(url_for("tailor", job_id=job_id, doc=doc_id))
-        except Exception as e:
-            flash(f"Couldn't write that: {e}")
-            return redirect(url_for("tailor", job_id=job_id))
+            level = max(0, min(4, int(request.form.get("level", 2))))
+        except ValueError:
+            level = 2
+        want_cover = bool(request.form.get("cover"))
+        doc_id = db.start_tailored(g.uid, job_id, level, want_cover)
+        threading.Thread(target=_write_in_background,
+                         args=(g.uid, doc_id, job_id, level, want_cover), daemon=True).start()
+        return redirect(url_for("tailor", job_id=job_id, doc=doc_id))
+
     docs = db.list_tailored(g.uid, job_id)
+    for d in docs:
+        d["state_now"] = db.tailored_state(d)
     current = None
     want = request.args.get("doc", type=int)
     if docs:
-        current = next((d for d in docs if d["id"] == want), docs[0])
+        current = next((d for d in docs if d["id"] == want), None)
+        if not current:
+            current = next((d for d in docs if d["state_now"] == "done"), docs[0])
+    r_html = c_html = ""
+    if current and current["state_now"] == "done":
+        r_html, c_html = _doc_html(current)
     return render_template("tailor.html", job=job, docs=docs, current=current,
-                           levels=ai.LEVELS, has_resume=bool(p.get("resume_text")), active="jobs")
+                           r_html=r_html, c_html=c_html, levels=ai.LEVELS,
+                           has_resume=bool(p.get("resume_text")), active="jobs")
+
+
+@app.get("/tailored/<int:doc_id>/state")
+@login_required
+def tailored_state(doc_id):
+    d = db.get_tailored(g.uid, doc_id)
+    if not d:
+        abort(404)
+    return jsonify(state=db.tailored_state(d), error=d.get("error") or "")
+
+
+@app.post("/tailored/<int:doc_id>/save")
+@login_required
+def save_tailored(doc_id):
+    d = db.get_tailored(g.uid, doc_id)
+    if not d:
+        abort(404)
+    data = request.get_json(silent=True) or {}
+    db.save_tailored_edits(g.uid, doc_id, worddocs.sanitize(data.get("resume_html", "")),
+                           worddocs.sanitize(data.get("cover_html", "")))
+    return jsonify(ok=True, saved_at=dt.datetime.utcnow().isoformat())
+
+
+@app.post("/jobs/<int:job_id>/applied")
+@login_required
+def mark_applied(job_id):
+    if not db.get_job(g.uid, job_id):
+        abort(404)
+    db.update_job(g.uid, job_id, status="applied")
+    return jsonify(ok=True)
 
 
 def _filename(job, kind):
@@ -272,17 +333,18 @@ def _filename(job, kind):
 @login_required
 def download(doc_id, kind):
     d = db.get_tailored(g.uid, doc_id)
-    if not d or kind not in ("resume", "cover_letter"):
+    if not d or kind not in ("resume", "cover_letter") or db.tailored_state(d) != "done":
         abort(404)
     job = db.get_job(g.uid, d["job_id"]) or {"company": "job", "title": ""}
-    resume = json.loads(d["resume_json"] or "{}")
+    r_html, c_html = _doc_html(d)
     if kind == "resume":
-        buf = worddocs.resume_docx(resume)
+        buf = worddocs.html_to_docx(r_html, "resume")
     else:
-        if not d["cover_letter"]:
+        if not c_html:
             abort(404)
-        buf = worddocs.cover_docx(resume.get("name", ""), d["cover_letter"])
-    return send_file(buf, as_attachment=True, download_name=_filename(job, "Resume" if kind == "resume" else "Cover_Letter"),
+        buf = worddocs.html_to_docx(c_html, "cover")
+    return send_file(buf, as_attachment=True,
+                     download_name=_filename(job, "Resume" if kind == "resume" else "Cover_Letter"),
                      mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
 

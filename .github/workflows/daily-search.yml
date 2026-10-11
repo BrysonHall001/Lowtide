@@ -20,3 +20,8 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           RAPIDAPI_KEY: ${{ secrets.RAPIDAPI_KEY }}
+          # Optional tuning. Leave these secrets unset to use the defaults.
+          MAX_QUERIES_PER_RUN: ${{ secrets.MAX_QUERIES_PER_RUN }}
+          MAX_SCREEN_PER_RUN: ${{ secrets.MAX_SCREEN_PER_RUN }}
+          MAX_DEEP_DIVES_PER_RUN: ${{ secrets.MAX_DEEP_DIVES_PER_RUN }}
+          OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}

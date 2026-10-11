@@ -1,15 +1,25 @@
 {% extends "base.html" %}
 {% block title %}Tailor · {{ job.title }} · Lowtide{% endblock %}
 {% block body %}
+{% set apply_url = job.direct_url or job.listing_url %}
 <p><a href="{{ url_for('jobs', tab=job.status) }}">Back to jobs</a></p>
+
 <section class="panel">
-  <h1>{{ job.title }}</h1>
-  <p class="lede">{{ job.company }}{% if job.pay_text %}, {{ job.pay_text }}{% endif %}</p>
+  <div class="doc-head">
+    <div>
+      <h1>{{ job.title }}</h1>
+      <p class="lede">{{ job.company }}{% if job.pay_text %}, {{ job.pay_text }}{% endif %}</p>
+    </div>
+    <div class="actions">
+      {% if apply_url %}<a class="btn primary" href="{{ apply_url }}" target="_blank" rel="noopener">Apply on {{ 'company site' if job.direct_url else 'listing' }}</a>{% endif %}
+      <button type="button" class="btn quiet" id="mark-applied" data-url="{{ url_for('mark_applied', job_id=job.id) }}" {% if job.status == 'applied' %}disabled{% endif %}>{{ 'Marked as applied' if job.status == 'applied' else 'Mark as applied' }}</button>
+    </div>
+  </div>
 
   {% if not has_resume %}
     <p class="flash">Upload your resume on the <a href="{{ url_for('profile') }}">Profile</a> page first. Lowtide tailors from it.</p>
   {% else %}
-  <form method="post" data-busy="Writing your documents. This takes about a minute…">
+  <form method="post" data-busy="Starting…">
     <div class="field">
       <label for="level">How much to tailor</label>
       <input id="level" class="dial" type="range" name="level" min="0" max="4" step="1" value="{{ current.level if current else 2 }}" list="level-marks">
@@ -20,7 +30,7 @@
     </div>
     <label class="inline"><input type="checkbox" name="cover" value="1" checked> Also write a cover letter</label>
     <div class="actions" style="margin-top: 1rem">
-      <button class="btn primary" type="submit">Write tailored {{ 'versions' if docs else 'resume' }}</button>
+      <button class="btn primary" type="submit">Write {{ 'a new version' if docs else 'tailored resume' }}</button>
     </div>
   </form>
   <script>
@@ -34,53 +44,86 @@
   {% endif %}
 </section>
 
-{% if current %}
-{% set r = current.resume_json|fromjson or {} %}
-{% set notes = current.notes_json|fromjson or {} %}
+{% if docs|length > 1 %}
+<p class="hint versions">Versions:
+  {% for d in docs %}
+    {% if d.id == current.id %}<strong>{{ levels[d.level][0] }}, {{ d.created_at|ago }}{{ ' (edited)' if d.edited_at }}</strong>
+    {% else %}<a href="{{ url_for('tailor', job_id=job.id, doc=d.id) }}">{{ levels[d.level][0] }}, {{ d.created_at|ago }}{{ ' (edited)' if d.edited_at }}{{ ' (writing)' if d.state_now == 'writing' }}{{ ' (failed)' if d.state_now == 'failed' }}</a>{% endif %}{{ ' · ' if not loop.last }}
+  {% endfor %}
+</p>
+{% endif %}
+
+{% if current and current.state_now == 'writing' %}
+<section class="panel writing" id="writing" data-state-url="{{ url_for('tailored_state', doc_id=current.id) }}">
+  <h2>Writing your {{ levels[current.level][0]|lower }} version…</h2>
+  <p class="lede">This takes about a minute. It's safe to leave this page; it will be here when you come back.</p>
+</section>
+{% elif current and current.state_now == 'failed' %}
 <section class="panel">
+  <h2>That version didn't finish</h2>
+  <p class="lede">{{ current.error or 'The server restarted while it was writing.' }} Try writing it again.</p>
+</section>
+{% elif current %}
+{% set notes = current.notes_json|fromjson or {} %}
+<section class="panel" id="doc-panel" data-save-url="{{ url_for('save_tailored', doc_id=current.id) }}">
   <div class="doc-head">
     <h2>{{ levels[current.level][0] }} version</h2>
     <div class="actions">
-      <a class="btn primary" href="{{ url_for('download', doc_id=current.id, kind='resume') }}">Download resume (.docx)</a>
-      {% if current.cover_letter %}<a class="btn quiet" href="{{ url_for('download', doc_id=current.id, kind='cover_letter') }}">Download cover letter (.docx)</a>{% endif %}
+      <span class="save-state" id="save-state" aria-live="polite">{{ 'Draft saved' if current.edited_at else '' }}</span>
+      <button type="button" class="btn quiet" id="save-draft">Save draft</button>
+      <a class="btn primary dl" href="{{ url_for('download', doc_id=current.id, kind='resume') }}">Download resume (.docx)</a>
+      {% if c_html %}<a class="btn quiet dl" href="{{ url_for('download', doc_id=current.id, kind='cover_letter') }}">Download cover letter (.docx)</a>{% endif %}
     </div>
   </div>
-  {% if docs|length > 1 %}
-  <p class="hint">Other versions:
-    {% for d in docs if d.id != current.id %}
-      <a href="{{ url_for('tailor', job_id=job.id, doc=d.id) }}">{{ levels[d.level][0] }} ({{ d.created_at|ago }})</a>{{ ', ' if not loop.last }}
-    {% endfor %}
-  </p>
-  {% endif %}
 
-  <div class="grid2">
+  <div class="grid3 notes-grid">
     {% if notes.changes %}<div><h3>What changed</h3><ul>{% for x in notes.changes %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
     {% if notes.be_ready_to_explain %}<div><h3>Be ready to talk about</h3><ul class="bad">{% for x in notes.be_ready_to_explain %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
     {% if notes.gaps %}<div><h3>Requirements you may not meet</h3><ul>{% for x in notes.gaps %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
   </div>
 
-  <h3>Resume preview</h3>
-  <div class="preview">
-    <p class="pv-name">{{ r.name }}</p>
-    <p class="muted">{{ r.contact }}</p>
-    <p>{{ r.summary }}</p>
-    {% for s in r.sections or [] %}
-      <p class="pv-sec">{{ s.title }}</p>
-      {% for e in s.entries or [] %}
-        <p><strong>{{ e.heading }}</strong>{% if e.dates %} <span class="muted">{{ e.dates }}</span>{% endif %}<br>
-        <em>{{ e.subheading }}</em>{% if e.location %} <span class="muted">{{ e.location }}</span>{% endif %}</p>
-        {% if e.bullets %}<ul>{% for b in e.bullets %}<li>{{ b }}</li>{% endfor %}</ul>{% endif %}
-      {% endfor %}
-    {% endfor %}
-    {% if r.skills %}<p class="pv-sec">Skills</p>{% for s in r.skills %}<p><strong>{{ s.label }}:</strong> {{ s['items'] }}</p>{% endfor %}{% endif %}
+  <div class="toolbar" id="toolbar" role="toolbar" aria-label="Formatting">
+    <select data-cmd="fontName" aria-label="Font">
+      <option value="">Font</option>
+      <option value="Calibri">Calibri</option>
+      <option value="Arial">Arial</option>
+      <option value="Georgia">Georgia</option>
+      <option value="Garamond">Garamond</option>
+      <option value="Times New Roman">Times New Roman</option>
+    </select>
+    <select data-cmd="fontSize" aria-label="Text size">
+      <option value="">Size</option>
+      <option value="1">Tiny</option>
+      <option value="2">Small</option>
+      <option value="3">Normal</option>
+      <option value="4">Large</option>
+      <option value="5">Larger</option>
+      <option value="6">Huge</option>
+    </select>
+    <button type="button" data-cmd="bold" aria-label="Bold"><b>B</b></button>
+    <button type="button" data-cmd="italic" aria-label="Italic"><i>I</i></button>
+    <button type="button" data-cmd="underline" aria-label="Underline"><u>U</u></button>
+    <button type="button" data-cmd="insertUnorderedList">• List</button>
+    <button type="button" data-cmd="insertOrderedList">1. List</button>
+    <button type="button" data-cmd="justifyLeft">Left</button>
+    <button type="button" data-cmd="justifyCenter">Center</button>
+    <button type="button" data-cmd="undo">Undo</button>
+    <button type="button" data-cmd="redo">Redo</button>
+    <span class="hint">Click into either document to edit it.</span>
   </div>
 
-  {% if current.cover_letter %}
-  <h3>Cover letter preview</h3>
-  <div class="preview">
-    {% for para in current.cover_letter.split('\n') if para.strip() %}<p>{{ para }}</p>{% endfor %}
+  <div class="docs-grid {{ 'single' if not c_html }}">
+    <div>
+      <h3>Resume</h3>
+      <div class="paper" id="resume-editor" contenteditable="true" spellcheck="true" aria-label="Resume, editable">{{ r_html|safe }}</div>
+    </div>
+    {% if c_html %}
+    <div>
+      <h3>Cover letter</h3>
+      <div class="paper cover" id="cover-editor" contenteditable="true" spellcheck="true" aria-label="Cover letter, editable">{{ c_html|safe }}</div>
+    </div>
+    {% endif %}
   </div>
-  {% endif %}
 </section>
 {% endif %}
 {% endblock %}

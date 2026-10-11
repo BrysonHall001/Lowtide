@@ -7,10 +7,17 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from . import ai, db, jobs_api
 
-MAX_QUERIES = int(os.environ.get("MAX_QUERIES_PER_RUN", "5"))
-MAX_SCREEN = int(os.environ.get("MAX_SCREEN_PER_RUN", "40"))
-MAX_DEEP_DIVES = int(os.environ.get("MAX_DEEP_DIVES_PER_RUN", "5"))
-DEEP_DIVE_MIN_SCORE = int(os.environ.get("DEEP_DIVE_MIN_SCORE", "60"))
+def _env_int(name, default):
+    try:
+        return int(os.environ.get(name) or default)
+    except ValueError:
+        return default
+
+
+MAX_QUERIES = _env_int("MAX_QUERIES_PER_RUN", 5)
+MAX_SCREEN = _env_int("MAX_SCREEN_PER_RUN", 40)
+MAX_DEEP_DIVES = _env_int("MAX_DEEP_DIVES_PER_RUN", 5)
+DEEP_DIVE_MIN_SCORE = _env_int("DEEP_DIVE_MIN_SCORE", 60)
 
 _guard = threading.Lock()
 _running = set()
@@ -73,6 +80,8 @@ def run(uid, trigger="manual"):
 
 def _run(uid, log):
     criteria = db.get_criteria(uid)
+    if criteria:
+        criteria = ai.clean_criteria(criteria)
     if not criteria or not criteria.get("search_queries"):
         raise RuntimeError("Set up your profile first so Lowtide knows what to search for.")
     want_slack = criteria.get("low_workload_priority", False)
@@ -83,7 +92,8 @@ def _run(uid, log):
     fresh = []
     for q in criteria["search_queries"][:MAX_QUERIES]:
         try:
-            results = jobs_api.search(q, date_posted)
+            results = jobs_api.search(q, date_posted, remote=criteria.get("remote_only", True),
+                                      location=criteria.get("location", ""))
         except Exception as e:
             log(f"Search \"{q}\" failed: {e}")
             continue

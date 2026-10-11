@@ -155,3 +155,42 @@ select.status { padding: .4rem; }
 .preview ul { margin: 0 0 .75rem; padding-left: 1.2rem; }
 .pv-name { font: 700 1.4rem var(--display); }
 .pv-sec { font-weight: 700; color: var(--tide); border-bottom: 1px solid var(--line); margin-top: 1rem !important; }
+
+/* Requirements */
+.reqs { display: grid; gap: .5rem; margin: .5rem 0 .75rem; }
+.req-row { display: grid; grid-template-columns: 1fr 150px auto; gap: .5rem; align-items: center; }
+.req-row select { width: 100%; }
+@media (max-width: 600px) { .req-row { grid-template-columns: 1fr; } }
+
+/* Tailor page */
+.versions { margin: 0 0 1rem; }
+.writing { border-style: dashed; }
+.save-state { color: var(--muted); font-size: .875rem; align-self: center; }
+.notes-grid ul { padding-left: 1.1rem; }
+.toolbar { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; gap: .35rem; align-items: center;
+  background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: .5rem; margin: 1rem 0; }
+.toolbar button, .toolbar select { font: 500 .875rem var(--body); color: var(--harbor); background: var(--fog);
+  border: 1px solid var(--line); border-radius: 6px; padding: .35rem .6rem; cursor: pointer; width: auto; }
+.toolbar .hint { margin: 0 0 0 .5rem; }
+.docs-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.5rem; align-items: start; }
+.docs-grid.single { grid-template-columns: minmax(0, 860px); }
+@media (max-width: 1000px) { .docs-grid { grid-template-columns: 1fr; } }
+
+/* Documents render like paper in both themes */
+.paper { background: #FFFFFF; color: #1B2B3C; border: 1px solid var(--line); border-radius: 4px;
+  padding: 2.25rem 2.25rem; font: 10pt/1.4 Calibri, Carlito, "Segoe UI", Arial, sans-serif;
+  box-shadow: 0 1px 3px rgba(27, 43, 60, .15); min-height: 400px; outline: none; }
+.paper:focus { box-shadow: 0 0 0 3px var(--seaglass); }
+.paper p, .paper div { margin: 0 0 .3em; }
+.paper ul, .paper ol { margin: .1em 0 .5em; padding-left: 1.4em; }
+.paper li { margin: 0 0 .1em; }
+.paper .r-name { font-size: 20pt; font-weight: 700; text-align: center; margin: 0; }
+.paper .r-contact { font-size: 9.5pt; color: #5E6E7B; text-align: center; margin-bottom: .8em; }
+.paper .r-sec { font-size: 11pt; font-weight: 700; color: #2C6A80; border-bottom: 1px solid #2C6A80;
+  margin: 1em 0 .35em; padding-bottom: 1px; }
+.paper .r-entry { font-size: 10.5pt; margin: .5em 0 0; }
+.paper .r-sub { margin: 0 0 .2em; }
+.paper .r-date { float: right; color: #5E6E7B; font-size: 9.5pt; }
+.paper.cover { font-size: 11pt; line-height: 1.5; }
+.paper.cover p { margin: 0 0 .9em; }
+.paper .c-name { font-size: 16pt; font-weight: 700; margin-bottom: 1.2em; }

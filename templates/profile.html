@@ -58,11 +58,12 @@
   <p class="lede">{{ c.summary }}</p>
   <form method="post" action="{{ url_for('save_settings') }}">
     <input type="hidden" name="summary" value="{{ c.summary }}">
-    <h3>Dealbreakers</h3>
+    <h3>The basics</h3>
     <div class="grid3">
       <div class="field">
         <label for="min_salary">Minimum yearly pay</label>
         <input id="min_salary" name="min_salary" inputmode="numeric" value="{{ c.min_salary }}">
+        <p class="hint">Use 0 for no minimum.</p>
       </div>
       <fieldset class="field">
         <legend>Job type</legend>
@@ -71,43 +72,59 @@
         {% endfor %}
       </fieldset>
       <fieldset class="field">
-        <legend>Must be</legend>
-        <label class="inline"><input type="checkbox" name="remote_only" value="1" {% if c.remote_only %}checked{% endif %}> Fully remote</label>
-        <label class="inline"><input type="checkbox" name="low_workload_priority" value="1" {% if c.low_workload_priority %}checked{% endif %}> Low pressure / light workload</label>
+        <legend>Where</legend>
+        <label class="inline"><input type="checkbox" name="remote_only" value="1" id="remote_only" {% if c.remote_only %}checked{% endif %}> Remote jobs only</label>
+        <div id="location-field" {% if c.remote_only %}hidden{% endif %}>
+          <label for="location" class="opt">Search near</label>
+          <input id="location" type="text" name="location" value="{{ c.location }}" placeholder="e.g. Raleigh, NC">
+        </div>
       </fieldset>
     </div>
+    <label class="inline"><input type="checkbox" name="low_workload_priority" value="1" {% if c.low_workload_priority %}checked{% endif %}> Score how calm each job is (low pressure, light workload, little monitoring)</label>
+
+    <h3>Your requirements</h3>
+    <p class="hint">Built from what you wrote above. Add anything else that matters, like PTO, benefits or schedule. Lowtide only rules a job out when the listing clearly breaks a must-have; if a listing doesn't mention something, the job stays in.</p>
+    <div class="reqs" id="reqs">
+      {% for r in c.requirements %}
+      <div class="req-row">
+        <input type="text" name="req_text" value="{{ r.text }}" aria-label="Requirement">
+        <select name="req_kind" aria-label="Type">
+          <option value="must" {% if r.kind == 'must' %}selected{% endif %}>Must have</option>
+          <option value="nice" {% if r.kind == 'nice' %}selected{% endif %}>Nice to have</option>
+          <option value="avoid" {% if r.kind == 'avoid' %}selected{% endif %}>Avoid</option>
+        </select>
+        <button type="button" class="btn quiet sm req-remove" aria-label="Remove requirement">Remove</button>
+      </div>
+      {% endfor %}
+    </div>
+    <template id="req-template">
+      <div class="req-row">
+        <input type="text" name="req_text" aria-label="Requirement" placeholder="e.g. At least 4 weeks PTO">
+        <select name="req_kind" aria-label="Type">
+          <option value="must">Must have</option>
+          <option value="nice">Nice to have</option>
+          <option value="avoid">Avoid</option>
+        </select>
+        <button type="button" class="btn quiet sm req-remove" aria-label="Remove requirement">Remove</button>
+      </div>
+    </template>
+    <button type="button" class="btn quiet" id="req-add">Add a requirement</button>
 
     <h3>What to search</h3>
     <div class="grid2">
       <div class="field">
         <label for="search_queries">Searches run each day <span class="opt">one per line</span></label>
         <textarea id="search_queries" name="search_queries" rows="6">{{ c.search_queries|lines }}</textarea>
-        <p class="hint">Only the first 5 run each day, to stay inside the free job-data plan.</p>
+        <p class="hint">Only the first {{ max_queries }} run each search, to stay inside the job-data plan.</p>
       </div>
       <div class="field">
         <label for="target_titles">Titles you'd fit <span class="opt">one per line</span></label>
         <textarea id="target_titles" name="target_titles" rows="6">{{ c.target_titles|lines }}</textarea>
       </div>
     </div>
-
-    <h3>How to judge them</h3>
-    <div class="grid2">
-      <div class="field">
-        <label for="must_haves">Must-haves</label>
-        <textarea id="must_haves" name="must_haves" rows="4">{{ c.must_haves|lines }}</textarea>
-      </div>
-      <div class="field">
-        <label for="avoid">Avoid</label>
-        <textarea id="avoid" name="avoid" rows="4">{{ c.avoid|lines }}</textarea>
-      </div>
-      <div class="field">
-        <label for="nice_to_haves">Nice to have</label>
-        <textarea id="nice_to_haves" name="nice_to_haves" rows="4">{{ c.nice_to_haves|lines }}</textarea>
-      </div>
-      <div class="field">
-        <label for="strengths">Your strengths</label>
-        <textarea id="strengths" name="strengths" rows="4">{{ c.strengths|lines }}</textarea>
-      </div>
+    <div class="field">
+      <label for="strengths">Your strengths <span class="opt">one per line</span></label>
+      <textarea id="strengths" name="strengths" rows="4">{{ c.strengths|lines }}</textarea>
     </div>
     <div class="actions">
       <button class="btn primary" type="submit">Save settings</button>

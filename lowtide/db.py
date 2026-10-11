@@ -8,7 +8,7 @@ import datetime as dt
 
 from sqlalchemy import (
     Boolean, Column, DateTime, Integer, MetaData, String, Table, Text, UniqueConstraint,
-    create_engine, func, select, insert, update, delete, desc, inspect,
+    create_engine, func, select, insert, update, delete, desc, inspect, text,
 )
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -114,6 +114,12 @@ tailored = Table(
     Column("resume_json", Text),
     Column("cover_letter", Text, default=""),
     Column("notes_json", Text, default=""),
+    Column("state", String(20), default="done"),     # writing / done / failed
+    Column("error", Text, default=""),
+    Column("want_cover", Boolean, default=True),
+    Column("resume_html", Text, default=""),         # set once the person edits
+    Column("cover_html", Text, default=""),
+    Column("edited_at", DateTime, nullable=True),
 )
 
 
@@ -123,6 +129,23 @@ def now():
 
 def init():
     meta.create_all(engine)
+    _add_missing_columns()
+
+
+def _add_missing_columns():
+    """Tables made by an older version get any new columns added."""
+    insp = inspect(engine)
+    existing = set(insp.get_table_names())
+    for table in meta.sorted_tables:
+        if table.name not in existing:
+            continue
+        have = {c["name"] for c in insp.get_columns(table.name)}
+        for col in table.columns:
+            if col.name in have:
+                continue
+            typ = col.type.compile(dialect=engine.dialect)
+            with engine.begin() as c:
+                c.execute(text(f'ALTER TABLE {table.name} ADD COLUMN {col.name} {typ}'))
 
 
 # ---------- pay parsing (for sorting) ----------
@@ -325,12 +348,37 @@ def feedback_examples(uid, limit=15):
 
 # ---------- tailored documents ----------
 
-def save_tailored(uid, job_id, level, resume, cover_letter, notes):
+def start_tailored(uid, job_id, level, want_cover):
     with engine.begin() as c:
         return c.execute(insert(tailored).values(
-            user_id=uid, job_id=job_id, level=level, created_at=now(),
-            resume_json=json.dumps(resume), cover_letter=cover_letter or "",
-            notes_json=json.dumps(notes or {}))).inserted_primary_key[0]
+            user_id=uid, job_id=job_id, level=level, created_at=now(), state="writing",
+            want_cover=want_cover, resume_json="{}", cover_letter="", notes_json="{}",
+            error="", resume_html="", cover_html="")).inserted_primary_key[0]
+
+
+def finish_tailored(doc_id, resume, cover_letter, notes):
+    with engine.begin() as c:
+        c.execute(update(tailored).where(tailored.c.id == doc_id).values(
+            state="done", resume_json=json.dumps(resume), cover_letter=cover_letter or "",
+            notes_json=json.dumps(notes or {})))
+
+
+def fail_tailored(doc_id, err):
+    with engine.begin() as c:
+        c.execute(update(tailored).where(tailored.c.id == doc_id).values(state="failed", error=str(err)[:1000]))
+
+
+def save_tailored_edits(uid, doc_id, resume_html, cover_html):
+    with engine.begin() as c:
+        c.execute(update(tailored).where(tailored.c.id == doc_id, tailored.c.user_id == uid).values(
+            resume_html=resume_html, cover_html=cover_html, edited_at=now()))
+
+
+def tailored_state(d):
+    """'writing' docs older than 10 minutes were cut off (e.g. a restart)."""
+    if d["state"] == "writing" and (now() - d["created_at"]).total_seconds() > 600:
+        return "failed"
+    return d["state"] or "done"
 
 
 def list_tailored(uid, job_id):
@@ -348,7 +396,8 @@ def get_tailored(uid, doc_id):
 
 def jobs_with_tailored(uid):
     with engine.connect() as c:
-        return {r[0] for r in c.execute(select(tailored.c.job_id).where(tailored.c.user_id == uid)).all()}
+        return {r[0] for r in c.execute(select(tailored.c.job_id).where(
+            tailored.c.user_id == uid, tailored.c.state == "done")).all()}
 
 
 # ---------- runs ----------

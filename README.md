@@ -91,8 +91,7 @@ Add any of these as environment variables in Render *and* as GitHub secrets
 | `DEEP_DIVE_MIN_SCORE` | 60 | Minimum score before a job gets researched |
 | `OPENAI_MODEL` | gpt-5-mini | Which OpenAI model to use |
 
-If you add a tuning setting to the daily search, also add a matching line under
-`env:` in `.github/workflows/daily-search.yml`.
+The daily search already reads these four names from GitHub secrets if you add them.
 
 ## Good to know
 - Scores are educated guesses. "Calm" scores marked *from the listing only* are

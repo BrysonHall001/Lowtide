@@ -5,8 +5,8 @@ import re
 
 from openai import OpenAI, BadRequestError
 
-MODEL = os.environ.get("OPENAI_MODEL", "gpt-5-mini")
-RESEARCH_MODEL = os.environ.get("OPENAI_RESEARCH_MODEL", MODEL)
+MODEL = os.environ.get("OPENAI_MODEL") or "gpt-5-mini"
+RESEARCH_MODEL = os.environ.get("OPENAI_RESEARCH_MODEL") or MODEL
 
 _client = None
 
@@ -70,14 +70,17 @@ moralize about their preferences. Write in plain language. Return JSON only."""
 CRITERIA_SHAPE = """Return a JSON object with exactly these keys:
 {
   "summary": "2-3 plain sentences: who they are and what they're looking for",
-  "min_salary": integer yearly USD floor (their absolute minimum),
-  "remote_only": true/false,
+  "min_salary": integer yearly USD floor (their absolute minimum; 0 if they didn't say),
+  "remote_only": true if they want only remote jobs, else false,
+  "location": "city/state for job searches if they're open to non-remote work, else empty",
   "employment_types": list from ["Full-time","Contract","Part-time"],
   "target_titles": 6-12 realistic job titles they're a credible candidate for,
   "search_queries": 5-6 short job-board searches (2-4 words each, e.g. "proposal writer"); no location words,
-  "must_haves": short list of non-negotiables beyond pay/remote,
-  "nice_to_haves": short list,
-  "avoid": short list of things that would make a job a bad fit,
+  "requirements": a list of everything else they care about, each as
+     {"text": "short plain statement", "kind": "must" | "nice" | "avoid"}.
+     "must" = non-negotiable (e.g. "At least 4 weeks PTO", "No time tracking software"),
+     "nice" = would be a plus, "avoid" = things that make a job a bad fit.
+     Don't repeat pay, remote or job type here. 4-14 items, in their own terms,
   "low_workload_priority": true if they want a calm, low-pressure, low-workload or low-surveillance job,
   "strengths": 4-8 short phrases describing what makes them hireable
 }"""
@@ -104,6 +107,9 @@ COVER LETTER (for tone/background only):
     return clean_criteria(data)
 
 
+KINDS = ("must", "nice", "avoid")
+
+
 def clean_criteria(d):
     def lst(k):
         v = d.get(k) or []
@@ -114,26 +120,40 @@ def clean_criteria(d):
         min_salary = int(float(str(d.get("min_salary") or 0).replace(",", "").replace("$", "")))
     except ValueError:
         min_salary = 0
+
+    reqs = []
+    for r in d.get("requirements") or []:
+        if isinstance(r, dict) and str(r.get("text") or "").strip():
+            kind = r.get("kind") if r.get("kind") in KINDS else "must"
+            reqs.append({"text": str(r["text"]).strip()[:300], "kind": kind})
+    # Settings saved by older versions used three separate lists.
+    if not reqs:
+        for key, kind in (("must_haves", "must"), ("nice_to_haves", "nice"), ("avoid", "avoid")):
+            reqs += [{"text": t, "kind": kind} for t in lst(key)]
+
     return {
         "summary": str(d.get("summary") or "").strip(),
         "min_salary": min_salary,
         "remote_only": bool(d.get("remote_only", True)),
+        "location": str(d.get("location") or "").strip()[:120],
         "employment_types": lst("employment_types") or ["Full-time"],
         "target_titles": lst("target_titles"),
         "search_queries": lst("search_queries")[:8],
-        "must_haves": lst("must_haves"),
-        "nice_to_haves": lst("nice_to_haves"),
-        "avoid": lst("avoid"),
+        "requirements": reqs[:40],
         "low_workload_priority": bool(d.get("low_workload_priority", False)),
         "strengths": lst("strengths"),
     }
 
 
 def _criteria_block(c):
-    return json.dumps({k: c.get(k) for k in (
-        "summary", "min_salary", "remote_only", "employment_types", "target_titles",
-        "must_haves", "nice_to_haves", "avoid", "low_workload_priority", "strengths")},
-        indent=1)
+    c = clean_criteria(c)
+    by = {k: [r["text"] for r in c["requirements"] if r["kind"] == k] for k in KINDS}
+    return json.dumps({
+        "summary": c["summary"], "min_salary": c["min_salary"], "remote_only": c["remote_only"],
+        "location_if_not_remote": c["location"], "employment_types": c["employment_types"],
+        "target_titles": c["target_titles"], "must_haves": by["must"], "nice_to_haves": by["nice"],
+        "avoid": by["avoid"], "low_workload_priority": c["low_workload_priority"],
+        "strengths": c["strengths"]}, indent=1)
 
 
 # ---------------------------------------------------------------- screening
@@ -174,14 +194,16 @@ Description:
 
 Return a JSON object with exactly these keys:
 {{
-  "passes_dealbreakers": true/false. False if it clearly fails remote_only (hybrid,
-     onsite, or remote-only-within-one-metro), pay clearly under min_salary, wrong
-     employment type, or it's clearly something from their "avoid" list. Missing pay is NOT a fail.
+  "passes_dealbreakers": true/false. False only if the listing CLEARLY fails one of:
+     remote_only (hybrid, onsite, or remote-only-within-one-metro); if not remote_only,
+     being too far from their location; pay clearly under min_salary; wrong employment
+     type; a must_have it clearly contradicts; or something clearly on their avoid list.
+     If the listing simply doesn't mention something (pay, PTO, etc.), that is NOT a fail.
   "reject_reason": "one short sentence if false, else empty",
   "remote_note": "under 8 plain words, e.g. 'Fully remote', 'Remote, some travel', 'Remote, US only', 'Hybrid', 'Unclear'",
   "employment_type": "Full-time / Contract / Part-time / Unknown",
   "estimated_pay": "if pay isn't posted, your best yearly estimate like \\"$70k–$85k\\", else empty",
-  "fit_score": 0-100 overall match for this person,
+  "fit_score": 0-100 overall match for this person, including how well it meets their nice_to_haves,
   "fit_reason": "one plain sentence, under 25 words",
   "qualified": "strong" / "reasonable" / "stretch" (would they realistically get an interview?),
   "slack_score": {"0-100 per the guide above" if want_slack else "null"},

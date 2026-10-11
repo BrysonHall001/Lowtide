@@ -126,3 +126,129 @@ document.querySelectorAll("select.status").forEach((sel) => {
     });
   });
 })();
+
+// Profile: requirements list and remote toggle.
+(function () {
+  const list = document.getElementById("reqs");
+  const tpl = document.getElementById("req-template");
+  const add = document.getElementById("req-add");
+  if (list && tpl && add) {
+    add.addEventListener("click", () => {
+      const row = tpl.content.firstElementChild.cloneNode(true);
+      list.appendChild(row);
+      row.querySelector("input").focus();
+    });
+    list.addEventListener("click", (e) => {
+      if (e.target.classList.contains("req-remove")) e.target.closest(".req-row").remove();
+    });
+  }
+  const remote = document.getElementById("remote_only");
+  const loc = document.getElementById("location-field");
+  if (remote && loc) remote.addEventListener("change", () => { loc.hidden = remote.checked; });
+})();
+
+// Tailor page: wait for writing to finish.
+(function () {
+  const box = document.getElementById("writing");
+  if (!box) return;
+  async function poll() {
+    try {
+      const r = await fetch(box.dataset.stateUrl);
+      const s = await r.json();
+      if (s.state !== "writing") { location.reload(); return; }
+    } catch (e) { /* try again */ }
+    setTimeout(poll, 4000);
+  }
+  setTimeout(poll, 4000);
+})();
+
+// Tailor page: mark as applied.
+(function () {
+  const btn = document.getElementById("mark-applied");
+  if (!btn) return;
+  btn.addEventListener("click", async () => {
+    const r = await fetch(btn.dataset.url, { method: "POST" });
+    if (r.ok) { btn.textContent = "Marked as applied"; btn.disabled = true; }
+    else alert("Couldn't mark it. Try reloading the page.");
+  });
+})();
+
+// Tailor page: editor, drafts, downloads.
+(function () {
+  const panel = document.getElementById("doc-panel");
+  if (!panel) return;
+  const resume = document.getElementById("resume-editor");
+  const cover = document.getElementById("cover-editor");
+  const editors = [resume, cover].filter(Boolean);
+  const state = document.getElementById("save-state");
+  const saveBtn = document.getElementById("save-draft");
+  let dirty = false, savedRange = null;
+
+  try { document.execCommand("styleWithCSS", false, false); } catch (e) {}
+
+  const inEditor = (node) => editors.some((ed) => ed.contains(node));
+  document.addEventListener("selectionchange", () => {
+    const sel = window.getSelection();
+    if (sel.rangeCount && inEditor(sel.anchorNode)) savedRange = sel.getRangeAt(0).cloneRange();
+  });
+  function restore() {
+    if (!savedRange) return false;
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(savedRange);
+    return true;
+  }
+
+  editors.forEach((ed) => ed.addEventListener("input", () => {
+    dirty = true;
+    state.textContent = "Unsaved changes";
+  }));
+
+  const toolbar = document.getElementById("toolbar");
+  toolbar.querySelectorAll("button").forEach((b) => {
+    b.addEventListener("mousedown", (e) => e.preventDefault());   // keep the selection
+    b.addEventListener("click", () => {
+      restore();
+      document.execCommand(b.dataset.cmd, false, null);
+      dirty = true; state.textContent = "Unsaved changes";
+    });
+  });
+  toolbar.querySelectorAll("select").forEach((s) => {
+    s.addEventListener("change", () => {
+      if (!s.value) return;
+      if (!restore()) { alert("Select some text in a document first."); s.value = ""; return; }
+      document.execCommand(s.dataset.cmd, false, s.value);
+      s.value = "";
+      dirty = true; state.textContent = "Unsaved changes";
+    });
+  });
+
+  async function save() {
+    state.textContent = "Saving…";
+    const r = await fetch(panel.dataset.saveUrl, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ resume_html: resume ? resume.innerHTML : "", cover_html: cover ? cover.innerHTML : "" }),
+    });
+    if (!r.ok) { state.textContent = "Couldn't save. Try again."; return false; }
+    dirty = false;
+    state.textContent = "Draft saved";
+    return true;
+  }
+  saveBtn.addEventListener("click", save);
+  document.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); save(); }
+  });
+
+  // Downloads always include your latest edits.
+  panel.querySelectorAll("a.dl").forEach((a) => {
+    a.addEventListener("click", async (e) => {
+      if (!dirty) return;
+      e.preventDefault();
+      if (await save()) window.location.href = a.href;
+    });
+  });
+
+  window.addEventListener("beforeunload", (e) => {
+    if (dirty) { e.preventDefault(); e.returnValue = ""; }
+  });
+})();
