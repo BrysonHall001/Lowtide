@@ -11,17 +11,17 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-{% if session.ok %}
+{% if current_user %}
 <header class="top">
   <a class="mark" href="{{ url_for('home') }}">Lowtide</a>
   <nav>
     <a href="{{ url_for('jobs') }}" {% if active == 'jobs' %}aria-current="page"{% endif %}>Jobs</a>
     <a href="{{ url_for('profile') }}" {% if active == 'profile' %}aria-current="page"{% endif %}>Profile</a>
-    <a href="{{ url_for('logout') }}">Log out</a>
+    <a href="{{ url_for('logout') }}">Log out {{ current_user.username }}</a>
   </nav>
 </header>
 {% endif %}
-<main>
+<main class="{{ 'wide' if active == 'jobs' else '' }}">
   {% with msgs = get_flashed_messages() %}
     {% for m in msgs %}<p class="flash" role="status">{{ m }}</p>{% endfor %}
   {% endwith %}

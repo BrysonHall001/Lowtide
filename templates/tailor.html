@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Tailor · {{ job.title }} · Lowtide{% endblock %}
+{% block body %}
+<p><a href="{{ url_for('jobs', tab=job.status) }}">Back to jobs</a></p>
+<section class="panel">
+  <h1>{{ job.title }}</h1>
+  <p class="lede">{{ job.company }}{% if job.pay_text %}, {{ job.pay_text }}{% endif %}</p>
+
+  {% if not has_resume %}
+    <p class="flash">Upload your resume on the <a href="{{ url_for('profile') }}">Profile</a> page first. Lowtide tailors from it.</p>
+  {% else %}
+  <form method="post" data-busy="Writing your documents. This takes about a minute…">
+    <div class="field">
+      <label for="level">How much to tailor</label>
+      <input id="level" class="dial" type="range" name="level" min="0" max="4" step="1" value="{{ current.level if current else 2 }}" list="level-marks">
+      <datalist id="level-marks">{% for k in range(5) %}<option value="{{ k }}"></option>{% endfor %}</datalist>
+      <div class="dial-labels">{% for k in range(5) %}<span>{{ levels[k][0] }}</span>{% endfor %}</div>
+      <p class="hint" id="level-desc"></p>
+      <p class="hint">At every level, Lowtide only uses what's true in your resume and profile. It rewords and reframes; it never invents jobs, titles, dates, degrees, tools or numbers.</p>
+    </div>
+    <label class="inline"><input type="checkbox" name="cover" value="1" checked> Also write a cover letter</label>
+    <div class="actions" style="margin-top: 1rem">
+      <button class="btn primary" type="submit">Write tailored {{ 'versions' if docs else 'resume' }}</button>
+    </div>
+  </form>
+  <script>
+    (function () {
+      const descs = {{ levels|tojson }};
+      const dial = document.getElementById("level"), out = document.getElementById("level-desc");
+      const show = () => { const d = descs[dial.value]; out.textContent = d[0] + ": " + d[1]; };
+      dial.addEventListener("input", show); show();
+    })();
+  </script>
+  {% endif %}
+</section>
+
+{% if current %}
+{% set r = current.resume_json|fromjson or {} %}
+{% set notes = current.notes_json|fromjson or {} %}
+<section class="panel">
+  <div class="doc-head">
+    <h2>{{ levels[current.level][0] }} version</h2>
+    <div class="actions">
+      <a class="btn primary" href="{{ url_for('download', doc_id=current.id, kind='resume') }}">Download resume (.docx)</a>
+      {% if current.cover_letter %}<a class="btn quiet" href="{{ url_for('download', doc_id=current.id, kind='cover_letter') }}">Download cover letter (.docx)</a>{% endif %}
+    </div>
+  </div>
+  {% if docs|length > 1 %}
+  <p class="hint">Other versions:
+    {% for d in docs if d.id != current.id %}
+      <a href="{{ url_for('tailor', job_id=job.id, doc=d.id) }}">{{ levels[d.level][0] }} ({{ d.created_at|ago }})</a>{{ ', ' if not loop.last }}
+    {% endfor %}
+  </p>
+  {% endif %}
+
+  <div class="grid2">
+    {% if notes.changes %}<div><h3>What changed</h3><ul>{% for x in notes.changes %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
+    {% if notes.be_ready_to_explain %}<div><h3>Be ready to talk about</h3><ul class="bad">{% for x in notes.be_ready_to_explain %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
+    {% if notes.gaps %}<div><h3>Requirements you may not meet</h3><ul>{% for x in notes.gaps %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
+  </div>
+
+  <h3>Resume preview</h3>
+  <div class="preview">
+    <p class="pv-name">{{ r.name }}</p>
+    <p class="muted">{{ r.contact }}</p>
+    <p>{{ r.summary }}</p>
+    {% for s in r.sections or [] %}
+      <p class="pv-sec">{{ s.title }}</p>
+      {% for e in s.entries or [] %}
+        <p><strong>{{ e.heading }}</strong>{% if e.dates %} <span class="muted">{{ e.dates }}</span>{% endif %}<br>
+        <em>{{ e.subheading }}</em>{% if e.location %} <span class="muted">{{ e.location }}</span>{% endif %}</p>
+        {% if e.bullets %}<ul>{% for b in e.bullets %}<li>{{ b }}</li>{% endfor %}</ul>{% endif %}
+      {% endfor %}
+    {% endfor %}
+    {% if r.skills %}<p class="pv-sec">Skills</p>{% for s in r.skills %}<p><strong>{{ s.label }}:</strong> {{ s['items'] }}</p>{% endfor %}{% endif %}
+  </div>
+
+  {% if current.cover_letter %}
+  <h3>Cover letter preview</h3>
+  <div class="preview">
+    {% for para in current.cover_letter.split('\n') if para.strip() %}<p>{{ para }}</p>{% endfor %}
+  </div>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}

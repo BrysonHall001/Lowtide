@@ -12,7 +12,8 @@ MAX_SCREEN = int(os.environ.get("MAX_SCREEN_PER_RUN", "40"))
 MAX_DEEP_DIVES = int(os.environ.get("MAX_DEEP_DIVES_PER_RUN", "5"))
 DEEP_DIVE_MIN_SCORE = int(os.environ.get("DEEP_DIVE_MIN_SCORE", "60"))
 
-_lock = threading.Lock()
+_guard = threading.Lock()
+_running = set()
 
 
 def _rank(fit, slack, want_slack):
@@ -31,7 +32,7 @@ def _int(v):
 
 def _base_record(n):
     return {
-        "id": n["id"], "dedupe_key": n["dedupe_key"], "found_at": db.now(),
+        "ref": n["id"], "dedupe_key": n["dedupe_key"], "found_at": db.now(),
         "search_query": n["search_query"], "title": n["title"], "company": n["company"],
         "company_website": n["company_website"], "location": n["location"],
         "is_remote": n["is_remote"], "employment_type": n["employment_type"],
@@ -43,39 +44,42 @@ def _base_record(n):
     }
 
 
-def run(trigger="manual"):
-    """Returns True if a run happened, False if one was already going."""
-    if not _lock.acquire(blocking=False):
-        return False
+def run(uid, trigger="manual"):
+    """Run one search for one user. Returns False if theirs is already going."""
+    with _guard:
+        if uid in _running:
+            return False
+        _running.add(uid)
     run_id = None
     try:
         db.init()
-        if db.run_in_progress():
+        if db.run_in_progress(uid):
             return False
-        run_id = db.start_run(trigger)
+        run_id = db.start_run(uid, trigger)
         log = lambda m: db.append_log(run_id, m)
-        _run(log)
+        _run(uid, log)
         log("Done.")
         db.finish_run(run_id, "done")
         return True
-    except Exception as e:  # keep the error visible in the app
+    except Exception as e:
         if run_id:
             db.append_log(run_id, f"Stopped with an error: {e}")
             db.finish_run(run_id, "failed")
         raise
     finally:
-        _lock.release()
+        with _guard:
+            _running.discard(uid)
 
 
-def _run(log):
-    criteria = db.get_criteria()
+def _run(uid, log):
+    criteria = db.get_criteria(uid)
     if not criteria or not criteria.get("search_queries"):
         raise RuntimeError("Set up your profile first so Lowtide knows what to search for.")
     want_slack = criteria.get("low_workload_priority", False)
     min_salary = criteria.get("min_salary") or 0
 
-    date_posted = "week" if db.count_jobs() == 0 else "3days"
-    seen_ids, seen_keys = db.known_job_keys()
+    date_posted = "week" if db.count_jobs(uid) == 0 else "3days"
+    seen_ids, seen_keys = db.known_job_keys(uid)
     fresh = []
     for q in criteria["search_queries"][:MAX_QUERIES]:
         try:
@@ -99,7 +103,7 @@ def _run(log):
         if min_salary and top and top < min_salary * 0.95:
             rec = _base_record(n)
             rec.update(passes=False, reject_reason=f"Posted pay ({n['pay_text']}) is under your minimum.")
-            db.save_job(rec)
+            rec["_id"] = db.save_job(uid, {k: v for k, v in rec.items() if k != "_id"})
         else:
             to_screen.append(n)
 
@@ -109,7 +113,7 @@ def _run(log):
         to_screen = to_screen[:MAX_SCREEN]
     log(f"Screening {len(to_screen)} listings…")
 
-    liked, disliked = db.feedback_examples()
+    liked, disliked = db.feedback_examples(uid)
     passed = []
     with ThreadPoolExecutor(max_workers=4) as pool:
         futures = {pool.submit(ai.screen_job, criteria, n, liked, disliked): n for n in to_screen}
@@ -141,7 +145,7 @@ def _run(log):
             )
             if not n["pay_text"] and est:
                 rec.update(pay_text=est, pay_source="estimated")
-            db.save_job(rec)
+            rec["_id"] = db.save_job(uid, {k: v for k, v in rec.items() if k != "_id"})
             if rec["passes"]:
                 passed.append(rec)
 
@@ -169,4 +173,4 @@ def _run(log):
                 fields["slack_score"] = new_slack
                 fields["slack_confidence"] = (d.get("confidence") or "low").lower()
                 fields["rank_score"] = _rank(r["fit_score"], new_slack, True)
-        db.update_job(r["id"], **fields)
+        db.update_job(uid, r["_id"], **fields)

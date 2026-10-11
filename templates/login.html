@@ -5,13 +5,16 @@
   <h1 class="mark big">Lowtide</h1>
   <p class="lede">Calm jobs, found for you.</p>
   {% if missing %}
-    <p class="flash">This app has no password yet. Add an <strong>APP_PASSWORD</strong> environment variable in Render, then reload.</p>
+    <p class="flash">This app has no invite code yet. Add an <strong>APP_PASSWORD</strong> environment variable in Render, then reload.</p>
   {% else %}
   <form method="post">
+    <label for="username">Username</label>
+    <input id="username" type="text" name="username" autocomplete="username" autocapitalize="none" autofocus required>
     <label for="pw">Password</label>
-    <input id="pw" type="password" name="password" autofocus required>
+    <input id="pw" type="password" name="password" autocomplete="current-password" required>
     <button class="btn primary" type="submit">Log in</button>
   </form>
+  <p class="hint">New here? <a href="{{ url_for('signup') }}">Create an account</a> with the invite code.</p>
   {% endif %}
 </section>
 {% endblock %}

@@ -57,11 +57,27 @@ It runs every day around 7am Eastern. To test it right away: **Actions** tab →
 **Daily job search** → **Run workflow**.
 
 ### 5. Use it
-1. Open your Render address and log in.
+1. Open your Render address and create an account. The **invite code** is your `APP_PASSWORD`.
 2. On **Profile**, describe what you want (type or press **Talk instead**),
    upload your resume, and press **Save and build my search**.
 3. Check the search settings it builds and fix anything that's off.
 4. Go to **Jobs** and press **Search now**. The first search takes a few minutes.
+
+## Accounts
+Everyone gets their own login, profile, jobs and tailored documents. To add
+someone, send them the web address and the invite code (your `APP_PASSWORD`).
+The first account created inherits any data from version 1.
+
+Each person's daily search uses its own JSearch requests: about 150 a month per
+person at the default settings. With more than one person, check your RapidAPI
+plan's monthly limit, or lower `MAX_QUERIES_PER_RUN`.
+
+## Tailored resumes and cover letters
+On any job, press **Tailor resume**, pick how far to tailor (from *Keep it as is*
+to *Stretch*), and download Word files. At every level it only reframes what's
+true in your resume and profile; it never invents jobs, titles, dates, degrees,
+tools or numbers. Each version lists what changed and anything you should be
+ready to talk about in an interview.
 
 ## Tuning (optional)
 Add any of these as environment variables in Render *and* as GitHub secrets

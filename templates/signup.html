@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Create account · Lowtide{% endblock %}
+{% block body %}
+<section class="login">
+  <h1 class="mark big">Lowtide</h1>
+  {% if first %}
+    <p class="lede">Create the first account. It keeps everything you've already set up.</p>
+  {% else %}
+    <p class="lede">Create your own account. Your profile and jobs stay separate from everyone else's.</p>
+  {% endif %}
+  <form method="post">
+    <label for="username">Username</label>
+    <input id="username" type="text" name="username" autocomplete="username" autocapitalize="none" required>
+    <label for="pw">Password</label>
+    <input id="pw" type="password" name="password" autocomplete="new-password" minlength="8" required>
+    <label for="invite">Invite code</label>
+    <input id="invite" type="password" name="invite" required>
+    <p class="hint">The invite code is the app password you set in Render.</p>
+    <button class="btn primary" type="submit">Create account</button>
+  </form>
+  {% if not first %}<p class="hint">Already have one? <a href="{{ url_for('login') }}">Log in</a>.</p>{% endif %}
+</section>
+{% endblock %}

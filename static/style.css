@@ -26,6 +26,7 @@ h1 { font-size: 2rem; margin: 0 0 .25rem; }
 h2 { font-size: 1.5rem; margin: 0 0 .25rem; }
 h3 { font-size: 1.05rem; margin: 1.75rem 0 .5rem; font-weight: 500; color: var(--muted); }
 main { max-width: 1240px; margin: 0 auto; padding: 1.5rem 1rem 4rem; }
+main.wide { max-width: 1680px; }
 
 .top { display: flex; align-items: center; justify-content: space-between; gap: 1rem;
   padding: .9rem 1.25rem; border-bottom: 1px solid var(--line); background: var(--paper); }
@@ -86,7 +87,7 @@ table.jobs { border-collapse: collapse; width: 100%; font-size: .92rem; }
 .jobs td { vertical-align: top; padding: .9rem .8rem; border-bottom: 1px solid var(--line); }
 .jobs tr:last-child td { border-bottom: 0; }
 .jobs td > span { display: block; }
-.job { min-width: 200px; }
+.job { min-width: 190px; }
 .job strong { display: block; font-size: 1rem; }
 .muted { color: var(--muted); font-size: .85rem; }
 .small { font-size: .85rem; }
@@ -94,8 +95,13 @@ table.jobs { border-collapse: collapse; width: 100%; font-size: .92rem; }
 .score.sm { font-size: 1.1rem; margin-top: .3rem; }
 .tag { display: inline-block !important; font-size: .75rem; padding: .05rem .4rem; border-radius: 4px; margin-left: .2rem; border: 1px solid var(--line); }
 .tag.est { border-style: dashed; color: var(--muted); }
-.links { display: flex; flex-direction: column; gap: .4rem; min-width: 120px; }
-.details { min-width: 220px; max-width: 360px; }
+.actions-cell { display: flex; flex-direction: column; gap: .4rem; width: 150px; }
+.actions-cell .btn, .actions-cell select { width: 100%; }
+.details { min-width: 190px; max-width: 320px; }
+.job { max-width: 280px; }
+.pay { min-width: 110px; }
+.setup { min-width: 110px; max-width: 160px; }
+.num { min-width: 90px; }
 .details summary { cursor: pointer; color: var(--tide); font-weight: 600; }
 .details details + details { margin-top: .4rem; }
 .details ul { margin: .2rem 0 .6rem; padding-left: 1.1rem; }
@@ -104,7 +110,7 @@ ul.guess li { font-style: italic; }
 ul.good li::marker { color: var(--kelp); }
 ul.bad li::marker { color: var(--urchin); }
 ul.sources { font-size: .8rem; word-break: break-all; }
-select.status { min-width: 120px; padding: .4rem; }
+select.status { padding: .4rem; }
 
 /* Calm gauge: a little tide pool that fills with higher scores */
 .gauge { width: 72px; height: 14px; border-radius: 7px; background: var(--fog); border: 1px solid var(--line); overflow: hidden; }
@@ -118,8 +124,34 @@ select.status { min-width: 120px; padding: .4rem; }
   .jobs td { border: 0; padding: .4rem 1rem; max-width: none; }
   .jobs td::before { content: attr(data-label); display: block; font-size: .78rem; color: var(--muted); font-weight: 600; }
   .jobs td.job::before { display: none; }
-  .links { flex-direction: row; }
+  .actions-cell { flex-direction: row; flex-wrap: wrap; width: 100%; }
+  .actions-cell .btn, .actions-cell select { width: auto; }
+  .job, .details, .setup { max-width: none; }
   .run-box { justify-items: start; }
   .log summary { text-align: left; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+.th-sort { all: unset; cursor: pointer; font-weight: 600; color: var(--muted); }
+.th-sort:hover, .th-sort[data-dir] { color: var(--harbor); }
+.th-sort[data-dir="asc"]::after { content: " ▲"; font-size: .7em; }
+.th-sort[data-dir="desc"]::after { content: " ▼"; font-size: .7em; }
+.th-sort:focus-visible { outline: 3px solid var(--seaglass); outline-offset: 2px; }
+.sort-bar { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; margin: 0 0 .75rem; }
+.sort-bar label { margin: 0; }
+.sort-bar select { width: auto; }
+.sort-bar .hint { margin: 0; }
+.tag.fresh { border-color: var(--seaglass); color: var(--harbor); background: color-mix(in srgb, var(--seaglass) 25%, transparent); }
+.details p.small { margin: .35rem 0; }
+
+.dial { width: 100%; accent-color: var(--tide); }
+.dial-labels { display: flex; justify-content: space-between; font-size: .8rem; color: var(--muted); gap: .25rem; }
+.dial-labels span { flex: 1; text-align: center; }
+.dial-labels span:first-child { text-align: left; }
+.dial-labels span:last-child { text-align: right; }
+.doc-head { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
+.preview { background: var(--fog); border: 1px solid var(--line); border-radius: 8px; padding: 1.25rem; max-width: 80ch; font-size: .92rem; }
+.preview p { margin: 0 0 .5rem; }
+.preview ul { margin: 0 0 .75rem; padding-left: 1.2rem; }
+.pv-name { font: 700 1.4rem var(--display); }
+.pv-sec { font-weight: 700; color: var(--tide); border-bottom: 1px solid var(--line); margin-top: 1rem !important; }

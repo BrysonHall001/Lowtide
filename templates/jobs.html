@@ -6,9 +6,9 @@
   <div>
     <h1>Jobs</h1>
     <p class="lede">
-      {% if run %}Last search {{ run.started_at|ago }}{% if run.state == 'failed' %}, and it hit a problem (details below){% endif %}.
+      {% if run %}Last search {{ run.started_at|ago }}{% if run.state == 'failed' %}, and it hit a problem (details in the search log){% endif %}.
       {% else %}No searches yet.{% endif %}
-      New listings arrive every morning.
+      New listings arrive every morning. Jobs stay in New until you sort them.
     </p>
   </div>
   <div class="run-box">
@@ -36,61 +36,89 @@
     {% else %}<p>Nothing here yet. Change a job's status to move it here.</p>{% endif %}
   </div>
 {% else %}
+<div class="sort-bar">
+  <label for="sort">Sort by</label>
+  <select id="sort">
+    <option value="rank:desc">Best overall match</option>
+    <option value="pay:desc">Pay, highest first</option>
+    <option value="pay:asc">Pay, lowest first</option>
+    <option value="fit:desc">Fit, highest first</option>
+    {% if slack_on %}<option value="calm:desc">Calm, highest first</option>{% endif %}
+    <option value="posted:desc">Newest posted</option>
+    <option value="found:desc">Newest found</option>
+    <option value="company:asc">Company, A to Z</option>
+    <option value="title:asc">Job title, A to Z</option>
+  </select>
+  <span class="hint">Or click a column name. Jobs without posted or estimated pay sort last.</span>
+</div>
+
 <div class="table-wrap">
-<table class="jobs">
+<table class="jobs" id="jobs-table">
   <thead>
     <tr>
-      <th scope="col">Job</th>
-      <th scope="col">Pay</th>
+      <th scope="col"><button class="th-sort" data-key="title">Job</button></th>
+      <th scope="col"><button class="th-sort" data-key="pay">Pay</button></th>
       <th scope="col">Setup</th>
-      <th scope="col">Fit</th>
-      {% if slack_on %}<th scope="col">Calm</th>{% endif %}
+      {% if tab != 'filtered' %}
+      <th scope="col"><button class="th-sort" data-key="fit">Fit</button></th>
+      {% if slack_on %}<th scope="col"><button class="th-sort" data-key="calm">Calm</button></th>{% endif %}
       <th scope="col">Details</th>
-      <th scope="col">Apply</th>
-      {% if tab != 'filtered' %}<th scope="col">Status</th>{% endif %}
+      {% else %}
+      <th scope="col">Why it was filtered</th>
+      {% endif %}
+      <th scope="col">Actions</th>
     </tr>
   </thead>
   <tbody>
   {% for j in rows %}
     {% set dive = j.deep_dive|fromjson %}
-    <tr>
+    {% set fresh = j.found_at and (now - j.found_at).total_seconds() < 86400 %}
+    <tr data-rank="{{ j.rank_score or 0 }}" data-pay="{{ j.pay_high or j.pay_low or '' }}"
+        data-fit="{{ j.fit_score if j.fit_score is not none else '' }}"
+        data-calm="{{ j.slack_score if j.slack_score is not none else '' }}"
+        data-posted="{{ j.posted_at|ts }}" data-found="{{ j.found_at|ts }}"
+        data-company="{{ j.company|lower }}" data-title="{{ j.title|lower }}">
       <td data-label="Job" class="job">
         <strong>{{ j.title }}</strong>
-        <span>{{ j.company }}{% if j.company_size %} <span class="muted">({{ j.company_size }})</span>{% endif %}</span>
-        <span class="muted">Posted {{ j.posted_at|ago if j.posted_at else 'recently' }}</span>
+        <span>{{ j.company }}</span>
+        {% if j.company_size %}<span class="muted">{{ j.company_size|truncate(40, True) }}</span>{% endif %}
+        <span class="muted">Posted {{ j.posted_at|ago if j.posted_at else 'recently' }}{% if fresh %} <span class="tag fresh">Found today</span>{% endif %}</span>
       </td>
-      <td data-label="Pay">
+      <td data-label="Pay" class="pay">
         {% if j.pay_text %}{{ j.pay_text }}
           <span class="tag {{ 'est' if j.pay_source == 'estimated' else 'posted' }}">{{ 'Estimate' if j.pay_source == 'estimated' else 'Posted' }}</span>
         {% else %}<span class="muted">Not posted</span>{% endif %}
       </td>
-      <td data-label="Setup">
+      <td data-label="Setup" class="setup">
         {{ j.remote_note or ('Remote' if j.is_remote else 'Check listing') }}
         <span class="muted">{{ j.employment_type }}</span>
       </td>
       {% if tab == 'filtered' %}
-        <td data-label="Why" colspan="{{ 3 if slack_on else 2 }}">{{ j.reject_reason }}</td>
+        <td data-label="Why">{{ j.reject_reason }}</td>
       {% else %}
-      <td data-label="Fit">
+      <td data-label="Fit" class="num">
         <span class="score">{{ j.fit_score if j.fit_score is not none else '–' }}</span>
-        <span class="small">{{ j.fit_reason }}</span>
-        {% if j.qualified %}<span class="muted">Your odds: {{ j.qualified }}</span>{% endif %}
+        {% if j.qualified %}<span class="muted">Odds: {{ j.qualified }}</span>{% endif %}
       </td>
       {% if slack_on %}
-      <td data-label="Calm">
+      <td data-label="Calm" class="num">
         {% if j.slack_score is not none %}
           <div class="gauge" role="img" aria-label="Calm score {{ j.slack_score }} out of 100">
             <div class="water" style="--level: {{ j.slack_score }}%"></div>
           </div>
           <span class="score sm">{{ j.slack_score }}</span>
-          <span class="muted">{{ 'Researched, ' ~ j.slack_confidence ~ ' confidence' if dive else 'From the listing only' }}</span>
-          <span class="small">{{ j.slack_notes }}</span>
+          <span class="muted">{{ (j.slack_confidence ~ ' confidence') if dive else 'Listing only' }}</span>
         {% else %}<span class="muted">–</span>{% endif %}
       </td>
       {% endif %}
       <td data-label="Details" class="details">
         {% set verb = j.resp_verbatim|fromjson or [] %}
         {% set inf = j.resp_inferred|fromjson or [] %}
+        <details>
+          <summary>Why these scores</summary>
+          <p class="small"><strong>Fit:</strong> {{ j.fit_reason }}</p>
+          {% if slack_on and j.slack_notes %}<p class="small"><strong>Calm:</strong> {{ j.slack_notes }}</p>{% endif %}
+        </details>
         {% if verb or inf %}
         <details>
           <summary>What you'd do</summary>
@@ -101,28 +129,27 @@
         {% if dive %}
         <details class="dive">
           <summary>Research</summary>
-          <p>{{ dive.verdict }}</p>
+          <p class="small">{{ dive.verdict }}</p>
           {% if dive.green_flags %}<p class="sub">Good signs</p><ul class="good">{% for x in dive.green_flags %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
           {% if dive.red_flags %}<p class="sub">Warning signs</p><ul class="bad">{% for x in dive.red_flags %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
           {% if dive.recent_turmoil %}<p class="small"><strong>Recent news:</strong> {{ dive.recent_turmoil }}</p>{% endif %}
-          {% if dive.sources %}<p class="sub">Sources</p><ul class="sources">{% for s in dive.sources %}<li><a href="{{ s }}" target="_blank" rel="noopener">{{ s|truncate(60, True) }}</a></li>{% endfor %}</ul>{% endif %}
+          {% if dive.sources %}<p class="sub">Sources</p><ul class="sources">{% for s in dive.sources %}<li><a href="{{ s }}" target="_blank" rel="noopener">{{ s|truncate(50, True) }}</a></li>{% endfor %}</ul>{% endif %}
         </details>
         {% endif %}
       </td>
       {% endif %}
-      <td data-label="Apply" class="links">
+      <td data-label="Actions" class="actions-td"><div class="actions-cell">
         {% if j.direct_url %}<a class="btn primary sm" href="{{ j.direct_url }}" target="_blank" rel="noopener">Company site</a>{% endif %}
         {% if j.listing_url and j.listing_url != j.direct_url %}<a class="btn quiet sm" href="{{ j.listing_url }}" target="_blank" rel="noopener">Listing</a>{% endif %}
-      </td>
-      {% if tab != 'filtered' %}
-      <td data-label="Status">
+        {% if tab != 'filtered' %}
+        <a class="btn quiet sm" href="{{ url_for('tailor', job_id=j.id) }}">{{ 'Tailored docs' if j.id in tailored_ids else 'Tailor resume' }}</a>
         <select class="status" data-id="{{ j.id }}" aria-label="Status for {{ j.title }}">
           {% for v, l in [('new','New'),('saved','Saved'),('applied','Applied'),('not_interested','Not for me')] %}
             <option value="{{ v }}" {% if j.status == v %}selected{% endif %}>{{ l }}</option>
           {% endfor %}
         </select>
-      </td>
-      {% endif %}
+        {% endif %}
+      </div></td>
     </tr>
   {% endfor %}
   </tbody>

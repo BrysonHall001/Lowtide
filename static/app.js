@@ -89,3 +89,40 @@ document.querySelectorAll("select.status").forEach((sel) => {
   // If a search is already running when the page loads, follow it.
   fetch("/run/status").then((r) => r.json()).then((s) => { if (s.running) { log.open = true; timer = 1; poll(); } });
 })();
+
+// Sorting.
+(function () {
+  const table = document.getElementById("jobs-table");
+  if (!table) return;
+  const body = table.tBodies[0];
+  const select = document.getElementById("sort");
+  const textKeys = new Set(["company", "title"]);
+
+  function sortBy(key, dir) {
+    const rows = Array.from(body.rows);
+    rows.sort((a, b) => {
+      let x = a.dataset[key], y = b.dataset[key];
+      if (textKeys.has(key)) return dir === "asc" ? x.localeCompare(y) : y.localeCompare(x);
+      // Blank values always go last.
+      if (x === "" && y === "") return 0;
+      if (x === "") return 1;
+      if (y === "") return -1;
+      return dir === "asc" ? Number(x) - Number(y) : Number(y) - Number(x);
+    });
+    rows.forEach((r) => body.appendChild(r));
+    table.querySelectorAll(".th-sort").forEach((b) => {
+      if (b.dataset.key === key) b.dataset.dir = dir; else delete b.dataset.dir;
+    });
+    const val = key + ":" + dir;
+    if ([...select.options].some((o) => o.value === val)) select.value = val;
+  }
+
+  select.addEventListener("change", () => { const [k, d] = select.value.split(":"); sortBy(k, d); });
+  table.querySelectorAll(".th-sort").forEach((b) => {
+    b.addEventListener("click", () => {
+      const key = b.dataset.key;
+      const dir = b.dataset.dir === "desc" ? "asc" : b.dataset.dir === "asc" ? "desc" : (textKeys.has(key) ? "asc" : "desc");
+      sortBy(key, dir);
+    });
+  });
+})();

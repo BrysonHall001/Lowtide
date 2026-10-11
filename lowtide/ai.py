@@ -166,7 +166,7 @@ def screen_job(criteria, job, liked, disliked):
 THE LISTING:
 Title: {job['title']}
 Company: {job['company']}
-Location: {job['location']}  (listed as remote: {job['is_remote']})
+Location: {job['location']}  (job board marks it remote: {'yes' if job['is_remote'] else 'no'})
 Employment type: {job['employment_type']}
 Posted pay: {job['pay_text'] or 'not posted'}
 Description:
@@ -178,14 +178,14 @@ Return a JSON object with exactly these keys:
      onsite, or remote-only-within-one-metro), pay clearly under min_salary, wrong
      employment type, or it's clearly something from their "avoid" list. Missing pay is NOT a fail.
   "reject_reason": "one short sentence if false, else empty",
-  "remote_note": "fully remote / remote with travel / remote but state-restricted / hybrid / unclear, with a few words of detail",
+  "remote_note": "under 8 plain words, e.g. 'Fully remote', 'Remote, some travel', 'Remote, US only', 'Hybrid', 'Unclear'",
   "employment_type": "Full-time / Contract / Part-time / Unknown",
   "estimated_pay": "if pay isn't posted, your best yearly estimate like \\"$70k–$85k\\", else empty",
   "fit_score": 0-100 overall match for this person,
-  "fit_reason": "one plain sentence",
+  "fit_reason": "one plain sentence, under 25 words",
   "qualified": "strong" / "reasonable" / "stretch" (would they realistically get an interview?),
   "slack_score": {"0-100 per the guide above" if want_slack else "null"},
-  "slack_notes": "{"one or two sentences naming the specific signals you saw" if want_slack else ""}",
+  "slack_notes": "{"one or two short sentences, under 40 words, naming the specific signals you saw" if want_slack else ""}",
   "company_size": "your best guess, e.g. '10,000+ employees' or 'small startup'",
   "responsibilities_verbatim": up to 4 short duties copied word-for-word from the listing,
   "responsibilities_inferred": up to 3 likely duties NOT stated in the listing, your educated guess
@@ -234,3 +234,78 @@ Return a JSON object with exactly these keys:
   "sources": up to 5 URLs you relied on
 }}"""
     return _json(_ask(DIVE_INSTRUCTIONS, prompt, model=RESEARCH_MODEL, web=True, json_mode=False))
+
+
+# ---------------------------------------------------------------- tailoring
+
+LEVELS = {
+    0: ("Keep it as is",
+        "Keep their resume essentially unchanged. Only reorder bullets so the most relevant "
+        "come first and adjust the summary to name this role. Do not reword bullets."),
+    1: ("Light touch",
+        "Keep their wording mostly intact. Reorder for relevance, tune the summary, and swap "
+        "in the job's terminology where it means the same thing as what they wrote."),
+    2: ("Tailored",
+        "Rewrite the summary and bullets to mirror the job's language and priorities. Lead "
+        "with the most relevant experience, trim bullets that don't help, and add relevant "
+        "skills they clearly have from their background."),
+    3: ("Bold",
+        "Confidently reframe their experience around this job. Emphasize transferable work, "
+        "describe adjacent duties in the job's terms, and use strong, specific verbs. "
+        "Present the closest-matching parts of each role prominently."),
+    4: ("Stretch",
+        "Make the strongest honest case possible for a job that isn't a natural fit. Reframe "
+        "every role around transferable skills, lead with whatever overlaps most, and position "
+        "them as a credible career-changer."),
+}
+
+TAILOR_INSTRUCTIONS = """You are an expert resume writer tailoring a resume and cover letter
+to one specific job. HARD RULES at every level: never invent employers, job titles, dates,
+degrees, certifications, licenses, security clearances, tools or software the person has
+not used, or numbers/metrics that aren't in their materials. You may reword, reorder,
+reframe and emphasize. If the job requires something they don't have, don't claim it;
+the cover letter may address it honestly. Write in a natural, confident human voice
+without buzzword stuffing. Return JSON only."""
+
+
+def tailor(profile, criteria, job, level, want_cover):
+    level = max(0, min(4, int(level)))
+    name, how = LEVELS[level]
+    prompt = f"""TAILORING LEVEL: {level} of 4 ({name}). {how}
+
+THE JOB:
+{job['title']} at {job['company']}
+{_clip(job['description'], 9000)}
+
+THEIR CURRENT RESUME (source of truth for facts):
+{_clip(profile.get('resume_text'), 12000)}
+
+EXTRA BACKGROUND THEY WROTE (also true; may use):
+{_clip(profile.get('notes'), 4000)}
+
+LINKEDIN (also true; may use):
+{_clip(profile.get('linkedin_text'), 6000)}
+
+THEIR STOCK COVER LETTER (for voice and facts only):
+{_clip(profile.get('cover_letter_text'), 4000)}
+
+Return a JSON object with exactly these keys:
+{{
+  "resume": {{
+    "name": "their name",
+    "contact": "one line of contact details exactly as in their resume (keep placeholders as-is)",
+    "summary": "2-4 sentence professional summary aimed at this job",
+    "sections": [
+      {{"title": "Experience", "entries": [
+        {{"heading": "job title", "subheading": "employer", "dates": "dates as written", "location": "", "bullets": ["..."]}}
+      ]}},
+      {{"title": "Education", "entries": [ ... same shape, bullets may be empty ... ]}}
+    ],
+    "skills": [{{"label": "group name", "items": "comma-separated skills"}}]
+  }},
+  "cover_letter": {"\"3-4 short paragraphs addressed to the hiring team, no address block, no placeholders except [Hiring Manager] if needed, signed with their name\"" if want_cover else "\"\""},
+  "changes": ["3-6 short notes on what you changed and why"],
+  "be_ready_to_explain": ["claims that are reframed enough that they should be ready to talk about them in an interview; empty if none"],
+  "gaps": ["requirements of the job they don't appear to meet; empty if none"]
+}}"""
+    return _json(_ask(TAILOR_INSTRUCTIONS, prompt))
